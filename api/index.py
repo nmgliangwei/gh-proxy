@@ -7,3 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from main import app
 
 # Vercel Python runtime 会自动识别并使用 Flask app 实例
+# 导出 app 和 application 作为 WSGI 应用
+application = app
+app = app  # 同时导出 app 变量

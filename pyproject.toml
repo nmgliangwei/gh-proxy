@@ -1,9 +1,8 @@
 [project]
 name = "gh-proxy"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
   "flask>=3.1,<4.0",
-  "gunicorn~=23.0.0",
-    "requests>=2.31,<3.0"
+  "requests>=2.31,<3.0"
 ]
