@@ -12,6 +12,8 @@ from urllib3.exceptions import (
     DecodeError, ReadTimeoutError, ProtocolError)
 from urllib.parse import quote
 
+app = Flask(__name__)
+
 # config
 # 分支文件使用jsDelivr镜像的开关，0为关闭，默认关闭
 jsdelivr = 0
@@ -37,7 +39,7 @@ ASSET_URL = 'https://hunshcn.github.io/gh-proxy'  # 主页
 white_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in white_list.split('\n') if i]
 black_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in black_list.split('\n') if i]
 pass_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in pass_list.split('\n') if i]
-app = Flask()
+
 CHUNK_SIZE = 1024 * 10
 index_html = requests.get(ASSET_URL, timeout=10).text
 icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
