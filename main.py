@@ -90,6 +90,21 @@ exp5 = re.compile(r'^(?:https?://)?gist\.(?:githubusercontent|github)\.com/(?P<a
 print("GH Proxy application starting...", file=sys.stderr)
 print(f"Python version: {sys.version}", file=sys.stderr)
 print(f"VERCEL env: {os.environ.get('VERCEL', 'Local')}", file=sys.stderr)
+try:
+    import flask
+    print(f"Flask version: {flask.__version__}", file=sys.stderr)
+except:
+    pass
+try:
+    import requests
+    print(f"Requests version: {requests.__version__}", file=sys.stderr)
+except:
+    pass
+try:
+    import urllib3
+    print(f"urllib3 version: {urllib3.__version__}", file=sys.stderr)
+except:
+    pass
 
 @app.route('/health')
 def health():
