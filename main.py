@@ -86,8 +86,6 @@ exp3 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:
 exp4 = re.compile(r'^(?:https?://)?raw\.(?:githubusercontent|github)\.com/(?P<author>.+?)/(?P<repo>.+?)/.+?/.+$')
 exp5 = re.compile(r'^(?:https?://)?gist\.(?:githubusercontent|github)\.com/(?P<author>.+?)/.+?/.+$')
 
-requests.sessions.default_headers = lambda: CaseInsensitiveDict()
-
 # 启动日志
 print("GH Proxy application starting...", file=sys.stderr)
 print(f"Python version: {sys.version}", file=sys.stderr)
