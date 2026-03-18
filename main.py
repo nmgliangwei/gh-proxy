@@ -3,12 +3,8 @@ import re
 import os
 import sys
 
-# 在导入 flask 之前先修复可能的兼容性问题
-# 检查并修复 http.server 模块
-try:
-    from http.server import BaseHTTPRequestHandler
-except ImportError:
-    pass
+# 确保 BaseHTTPRequestHandler 正确导入
+from http.server import BaseHTTPRequestHandler
 
 import requests
 from flask import Flask, Response, redirect, request
@@ -168,6 +164,40 @@ def handler(u):
         u = quote(u, safe='/:')
         return proxy(u)
 
+def iter_content(self, chunk_size=1, decode_unicode=False):
+    """rewrite requests function, set decode_content with False"""
+
+    def generate():
+        if hasattr(self.raw, 'stream'):
+            try:
+                for chunk in self.raw.stream(chunk_size, decode_content=False):
+                    yield chunk
+            except ProtocolError as e:
+                raise ChunkedEncodingError(e)
+            except DecodeError as e:
+                raise ContentDecodingError(e)
+            except ReadTimeoutError as e:
+                raise ConnectionError(e)
+        else:
+            while True:
+                chunk = self.raw.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        self._content_consumed = True
+
+    if self._content_consumed and isinstance(self._content, bool):
+        raise StreamConsumedError()
+    elif chunk_size is not None and not isinstance(chunk_size, int):
+        raise TypeError("chunk_size must be an int, it is instead a %s." % type(chunk_size))
+    reused_chunks = iter_slices(self._content, chunk_size)
+    stream_chunks = generate()
+    chunks = reused_chunks if self._content_consumed else stream_chunks
+
+    if decode_unicode:
+        chunks = stream_decode_response_unicode(chunks, self)
+
+    return chunks
 def proxy(u, allow_redirects=False):
     headers = {}
     r_headers = dict(request.headers)
