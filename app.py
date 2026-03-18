@@ -226,3 +226,5 @@ def proxy(u, allow_redirects=False):
         headers['content-type'] = 'text/html; charset=UTF-8'
         return Response('server error ' + str(e), status=500, headers=headers)
 
+# Vercel 需要导出一个名为 'application' 的 WSGI 应用
+application = app
