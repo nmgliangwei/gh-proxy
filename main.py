@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
+import os
+import sys
 
 import requests
 from flask import Flask, Response, redirect, request
@@ -14,19 +16,19 @@ from urllib.parse import quote
 
 app = Flask(__name__)
 
-# config
-# 分支文件使用 jsDelivr 镜像的开关，0 为关闭，默认关闭
-jsdelivr = 0
-size_limit = 1024 * 1024 * 1024 * 999  # 允许的文件大小，默认 999GB，相当于无限制了 https://github.com/hunshcn/gh-proxy/issues/8
+# 全局异常处理器
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """全局异常处理器"""
+    import traceback
+    error_msg = f"Error: {str(e)}\nTraceback: {traceback.format_exc()}"
+    print(error_msg, file=sys.stderr)
+    return Response(f'Server Error: {str(e)}', status=500, content_type='text/plain')
 
-"""
-  先生效白名单再匹配黑名单，pass_list匹配到的会直接 302 到 jsdelivr 而忽略设置
-  生效顺序 白->黑->pass，可以前往 https://github.com/hunshcn/gh-proxy/issues/41 查看示例
-  每个规则一行，可以封禁某个用户的所有仓库，也可以封禁某个用户的特定仓库，下方用黑名单示例，白名单同理
-  user1 # 封禁 user1 的所有仓库
-  user1/repo1 # 封禁 user1 的 repo1
-  */repo1 # 封禁所有叫做 repo1 的仓库
-"""
+# config
+jsdelivr = 0
+size_limit = 1024 * 1024 * 1024 * 999
+
 white_list = '''
 '''
 black_list = '''
@@ -34,14 +36,29 @@ black_list = '''
 pass_list = '''
 '''
 
-ASSET_URL = 'https://hunshcn.github.io/gh-proxy'  # 主页
+ASSET_URL = 'https://hunshcn.github.io/gh-proxy'
+
+# 默认首页，避免启动时网络请求
+DEFAULT_INDEX_HTML = '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GH Proxy</title>
+</head>
+<body>
+    <h1>GH Proxy</h1>
+    <p>GitHub 加速代理服务</p>
+</body>
+</html>'''
 
 white_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in white_list.split('\n') if i]
 black_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in black_list.split('\n') if i]
 pass_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in pass_list.split('\n') if i]
 
 CHUNK_SIZE = 1024 * 10
-# 懒加载静态资源，避免模块导入时网络请求导致超时
+
+# 懒加载静态资源
 _index_html = None
 _icon_r = None
 
@@ -49,16 +66,16 @@ def get_index_html():
     global _index_html
     if _index_html is None:
         try:
-            _index_html = requests.get(ASSET_URL, timeout=10).text
+            _index_html = requests.get(ASSET_URL, timeout=5).text
         except Exception:
-            _index_html = '<h1>GH Proxy</h1><p>Server Error</p>'
+            _index_html = DEFAULT_INDEX_HTML
     return _index_html
 
 def get_icon_r():
     global _icon_r
     if _icon_r is None:
         try:
-            _icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
+            _icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=5).content
         except Exception:
             _icon_r = b''
     return _icon_r
@@ -71,6 +88,15 @@ exp5 = re.compile(r'^(?:https?://)?gist\.(?:githubusercontent|github)\.com/(?P<a
 
 requests.sessions.default_headers = lambda: CaseInsensitiveDict()
 
+# 启动日志
+print("GH Proxy application starting...", file=sys.stderr)
+print(f"Python version: {sys.version}", file=sys.stderr)
+print(f"VERCEL env: {os.environ.get('VERCEL', 'Local')}", file=sys.stderr)
+
+@app.route('/health')
+def health():
+    """健康检查端点"""
+    return Response('OK', status=200, content_type='text/plain')
 
 @app.route('/')
 def index():
@@ -78,17 +104,14 @@ def index():
         return redirect('/' + request.args.get('q'))
     return get_index_html()
 
-
 @app.route('/favicon.ico')
 def icon():
     return Response(get_icon_r(), content_type='image/vnd.microsoft.icon')
-
 
 def iter_content(self, chunk_size=1, decode_unicode=False):
     """rewrite requests function, set decode_content with False"""
 
     def generate():
-        # Special case for urllib3.
         if hasattr(self.raw, 'stream'):
             try:
                 for chunk in self.raw.stream(chunk_size, decode_content=False):
@@ -100,31 +123,25 @@ def iter_content(self, chunk_size=1, decode_unicode=False):
             except ReadTimeoutError as e:
                 raise ConnectionError(e)
         else:
-            # Standard file-like object.
             while True:
                 chunk = self.raw.read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
-
         self._content_consumed = True
 
     if self._content_consumed and isinstance(self._content, bool):
         raise StreamConsumedError()
     elif chunk_size is not None and not isinstance(chunk_size, int):
         raise TypeError("chunk_size must be an int, it is instead a %s." % type(chunk_size))
-    # simulate reading small chunks of the content
     reused_chunks = iter_slices(self._content, chunk_size)
-
     stream_chunks = generate()
-
     chunks = reused_chunks if self._content_consumed else stream_chunks
 
     if decode_unicode:
         chunks = stream_decode_response_unicode(chunks, self)
 
     return chunks
-
 
 def check_url(u):
     for exp in (exp1, exp2, exp3, exp4, exp5):
@@ -133,12 +150,11 @@ def check_url(u):
             return m
     return False
 
-
 @app.route('/<path:u>', methods=['GET', 'POST'])
 def handler(u):
     u = u if u.startswith('http') else 'https://' + u
     if u.rfind('://', 3, 9) == -1:
-        u = u.replace('s:/', 's://', 1)  # uwsgi 会将//传递为/
+        u = u.replace('s:/', 's://', 1)
     pass_by = False
     m = check_url(u)
     if m:
@@ -178,7 +194,6 @@ def handler(u):
         u = quote(u, safe='/:')
         return proxy(u)
 
-
 def proxy(u, allow_redirects=False):
     headers = {}
     r_headers = dict(request.headers)
@@ -213,5 +228,5 @@ def proxy(u, allow_redirects=False):
 if __name__ == '__main__':
     app.run()
 
-# Vercel 需要 application 作为 WSGI 入口
+# Vercel WSGI entry point
 application = app
