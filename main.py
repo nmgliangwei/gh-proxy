@@ -3,12 +3,9 @@ import re
 import os
 import sys
 
-# 在导入 flask 之前先修复可能的兼容性问题
-# 检查并修复 http.server 模块
-try:
-    from http.server import BaseHTTPRequestHandler
-except ImportError:
-    pass
+# 确保 BaseHTTPRequestHandler 在模块级别可用
+import http.server
+BaseHTTPRequestHandler = http.server.BaseHTTPRequestHandler
 
 import requests
 from flask import Flask, Response, redirect, request
