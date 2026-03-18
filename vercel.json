@@ -1,15 +1,4 @@
 {
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.12",
-      "memory": 2000,
-      "maxDuration": 60
-    }
-  },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.py"
-    }
-  ]
+  "buildCommand": "pip install -r requirements.txt",
+  "devCommand": "gunicorn -w 4 app:app"
 }

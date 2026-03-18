@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 import requests
+from flask import Flask, Response, redirect, request
 from requests.exceptions import (
     ChunkedEncodingError,
     ContentDecodingError, ConnectionError, StreamConsumedError)
@@ -11,57 +12,31 @@ from urllib3.exceptions import (
 from urllib.parse import quote
 
 # config
-# 分支文件使用jsDelivr镜像的开关，0为关闭，默认关闭
 jsdelivr = 0
-size_limit = 1024 * 1024 * 1024 * 999  # 允许的文件大小，默认999GB，相当于无限制了
+size_limit = 1024 * 1024 * 1024 * 999
 
-"""
-  先生效白名单再匹配黑名单，pass_list匹配到的会直接302到jsdelivr而忽略设置
-  生效顺序 白->黑->pass，可以前往https://github.com/hunshcn/gh-proxy/issues/41 查看示例
-  每个规则一行，可以封禁某个用户的所有仓库，也可以封禁某个用户的特定仓库，下方用黑名单示例，白名单同理
-  user1 # 封禁user1的所有仓库
-  user1/repo1 # 封禁user1的repo1
-  */repo1 # 封禁所有叫做repo1的仓库
-"""
-white_list = '''
-'''
-black_list = '''
-'''
-pass_list = '''
-'''
+white_list = ''''''
+black_list = ''''''
+pass_list = ''''''
 
-ASSET_URL = 'https://hunshcn.github.io/gh-proxy'  # 主页
+ASSET_URL = 'https://hunshcn.github.io/gh-proxy'
 
 white_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in white_list.split('\n') if i]
 black_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in black_list.split('\n') if i]
 pass_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in pass_list.split('\n') if i]
 
+app = Flask(__name__)
 CHUNK_SIZE = 1024 * 10
 
-# 缓存资源以避免每次请求都重新加载
-_index_html = None
-_icon_r = None
+try:
+    index_html = requests.get(ASSET_URL, timeout=10).text
+except:
+    index_html = '<html><body>GitHub Proxy</body></html>'
 
-
-def get_index_html():
-    global _index_html
-    if _index_html is None:
-        try:
-            _index_html = requests.get(ASSET_URL, timeout=10).text
-        except:
-            _index_html = '<html><body>GitHub Proxy</body></html>'
-    return _index_html
-
-
-def get_icon():
-    global _icon_r
-    if _icon_r is None:
-        try:
-            _icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
-        except:
-            _icon_r = b''
-    return _icon_r
-
+try:
+    icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
+except:
+    icon_r = b''
 
 exp1 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:releases|archive)/.*$')
 exp2 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:blob|raw)/.*$')
@@ -72,14 +47,13 @@ exp5 = re.compile(r'^(?:https?://)?gist\.(?:githubusercontent|github)\.com/(?P<a
 requests.sessions.default_headers = lambda: CaseInsensitiveDict()
 
 
-def iter_content(response, chunk_size=1, decode_unicode=False):
+def iter_content(self, chunk_size=1, decode_unicode=False):
     """rewrite requests function, set decode_content with False"""
 
     def generate():
-        # Special case for urllib3.
-        if hasattr(response.raw, 'stream'):
+        if hasattr(self.raw, 'stream'):
             try:
-                for chunk in response.raw.stream(chunk_size, decode_content=False):
+                for chunk in self.raw.stream(chunk_size, decode_content=False):
                     yield chunk
             except ProtocolError as e:
                 raise ChunkedEncodingError(e)
@@ -88,28 +62,24 @@ def iter_content(response, chunk_size=1, decode_unicode=False):
             except ReadTimeoutError as e:
                 raise ConnectionError(e)
         else:
-            # Standard file-like object.
             while True:
-                chunk = response.raw.read(chunk_size)
+                chunk = self.raw.read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
+        self._content_consumed = True
 
-        response._content_consumed = True
-
-    if response._content_consumed and isinstance(response._content, bool):
+    if self._content_consumed and isinstance(self._content, bool):
         raise StreamConsumedError()
     elif chunk_size is not None and not isinstance(chunk_size, int):
         raise TypeError("chunk_size must be an int, it is instead a %s." % type(chunk_size))
-    # simulate reading small chunks of the content
-    reused_chunks = iter_slices(response._content, chunk_size)
 
+    reused_chunks = iter_slices(self._content, chunk_size)
     stream_chunks = generate()
-
-    chunks = reused_chunks if response._content_consumed else stream_chunks
+    chunks = reused_chunks if self._content_consumed else stream_chunks
 
     if decode_unicode:
-        chunks = stream_decode_response_unicode(chunks, response)
+        chunks = stream_decode_response_unicode(chunks, self)
 
     return chunks
 
@@ -122,14 +92,23 @@ def check_url(u):
     return False
 
 
-def handler(path, method, headers, query_string, body):
-    """
-    Main handler for Vercel Serverless Function
-    """
-    u = path if path.startswith('http') else 'https://' + path
-    if u.rfind('://', 3, 9) == -1:
-        u = u.replace('s:/', 's://', 1)  # 处理协议问题
+@app.route('/')
+def index():
+    if 'q' in request.args:
+        return redirect('/' + request.args.get('q'))
+    return index_html
 
+
+@app.route('/favicon.ico')
+def icon():
+    return Response(icon_r, content_type='image/vnd.microsoft.icon')
+
+
+@app.route('/<path:u>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'])
+def handler(u):
+    u = u if u.startswith('http') else 'https://' + u
+    if u.rfind('://', 3, 9) == -1:
+        u = u.replace('s:/', 's://', 1)
     pass_by = False
     m = check_url(u)
     if m:
@@ -139,169 +118,69 @@ def handler(path, method, headers, query_string, body):
                 if m[:len(i)] == i or i[0] == '*' and len(m) == 2 and m[1] == i[1]:
                     break
             else:
-                return {
-                    'statusCode': 403,
-                    'body': 'Forbidden by white list.',
-                    'headers': {'Content-Type': 'text/plain'}
-                }
+                return Response('Forbidden by white list.', status=403)
         for i in black_list:
             if m[:len(i)] == i or i[0] == '*' and len(m) == 2 and m[1] == i[1]:
-                return {
-                    'statusCode': 403,
-                    'body': 'Forbidden by black list.',
-                    'headers': {'Content-Type': 'text/plain'}
-                }
+                return Response('Forbidden by black list.', status=403)
         for i in pass_list:
             if m[:len(i)] == i or i[0] == '*' and len(m) == 2 and m[1] == i[1]:
                 pass_by = True
                 break
     else:
-        return {
-            'statusCode': 403,
-            'body': 'Invalid input.',
-            'headers': {'Content-Type': 'text/plain'}
-        }
+        return Response('Invalid input.', status=403)
 
     if (jsdelivr or pass_by) and exp2.match(u):
         u = u.replace('/blob/', '@', 1).replace('github.com', 'cdn.jsdelivr.net/gh', 1)
-        return {
-            'statusCode': 302,
-            'headers': {'Location': u}
-        }
+        return redirect(u)
     elif (jsdelivr or pass_by) and exp4.match(u):
         u = re.sub(r'(\.com/.*?/.+?)/(.+?/)', r'\1@\2', u, 1)
         _u = u.replace('raw.githubusercontent.com', 'cdn.jsdelivr.net/gh', 1)
         u = u.replace('raw.github.com', 'cdn.jsdelivr.net/gh', 1) if _u == u else _u
-        return {
-            'statusCode': 302,
-            'headers': {'Location': u}
-        }
+        return redirect(u)
     else:
         if exp2.match(u):
             u = u.replace('/blob/', '/raw/', 1)
         if pass_by:
-            url = u + query_string
+            url = u + request.url.replace(request.base_url, '', 1)
             if url.startswith('https:/') and not url.startswith('https://'):
                 url = 'https://' + url[7:]
-            return {
-                'statusCode': 302,
-                'headers': {'Location': url}
-            }
+            return redirect(url)
         u = quote(u, safe='/:')
-        return proxy(u, method, headers, query_string, body, False)
+        return proxy(u)
 
 
-def proxy(u, method, headers, query_string, body, allow_redirects=False):
-    """代理请求"""
-    response_headers = {}
-    r_headers = dict(headers)
+def proxy(u, allow_redirects=False):
+    headers = {}
+    r_headers = dict(request.headers)
     if 'Host' in r_headers:
         r_headers.pop('Host')
-    if 'host' in r_headers:
-        r_headers.pop('host')
-
     try:
-        url = u + query_string
+        url = u + request.url.replace(request.base_url, '', 1)
         if url.startswith('https:/') and not url.startswith('https://'):
             url = 'https://' + url[7:]
-
-        r = requests.request(
-            method=method,
-            url=url,
-            data=body,
-            headers=r_headers,
-            stream=True,
-            allow_redirects=allow_redirects,
-            timeout=30
-        )
-        response_headers = dict(r.headers)
+        r = requests.request(method=request.method, url=url, data=request.data, headers=r_headers, stream=True,
+                             allow_redirects=allow_redirects, timeout=30)
+        headers = dict(r.headers)
 
         if 'Content-length' in r.headers and int(r.headers['Content-length']) > size_limit:
-            return {
-                'statusCode': 302,
-                'headers': {'Location': url}
-            }
+            return redirect(u + request.url.replace(request.base_url, '', 1))
 
-        # 对于小文件，直接返回；对于大文件，流式传输
-        content = b''
-        try:
+        def generate():
             for chunk in iter_content(r, chunk_size=CHUNK_SIZE):
-                if chunk:
-                    content += chunk
-                    # Vercel 的限制是 6MB，如果内容过大则返回重定向
-                    if len(content) > 5 * 1024 * 1024:  # 5MB 限制
-                        return {
-                            'statusCode': 302,
-                            'headers': {'Location': url}
-                        }
-        except Exception:
-            pass
+                yield chunk
 
         if 'Location' in r.headers:
             _location = r.headers.get('Location')
             if check_url(_location):
-                response_headers['Location'] = '/' + _location
-                return {
-                    'statusCode': r.status_code,
-                    'headers': response_headers
-                }
+                headers['Location'] = '/' + _location
             else:
-                return proxy(_location, method, headers, '', body, True)
+                return proxy(_location, True)
 
-        return {
-            'statusCode': r.status_code,
-            'headers': response_headers,
-            'body': content,
-            'isBase64Encoded': True
-        }
+        return Response(generate(), headers=headers, status=r.status_code)
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': 'server error ' + str(e),
-            'headers': {'Content-Type': 'text/html; charset=UTF-8'}
-        }
+        headers['content-type'] = 'text/html; charset=UTF-8'
+        return Response('server error ' + str(e), status=500, headers=headers)
 
 
-def handler_root(method, headers, query_string):
-    """处理根路径请求"""
-    if query_string and 'q=' in query_string:
-        # 提取查询参数
-        import urllib.parse
-        params = urllib.parse.parse_qs(urllib.parse.urlparse('?' + query_string).query)
-        if 'q' in params:
-            q = params['q'][0]
-            return {
-                'statusCode': 302,
-                'headers': {'Location': '/' + q}
-            }
-
-    return {
-        'statusCode': 200,
-        'body': get_index_html(),
-        'headers': {'Content-Type': 'text/html; charset=UTF-8'}
-    }
-
-
-async def main_handler(request):
-    """
-    Vercel Serverless Function 入口
-    """
-    path = request.get('path', '').lstrip('/')
-    method = request.get('method', 'GET')
-    headers = request.get('headers', {})
-    query_string = request.get('queryString', '')
-    body = request.get('body', b'')
-
-    if not path or path == '':
-        return handler_root(method, headers, query_string)
-
-    if path == 'favicon.ico':
-        icon = get_icon()
-        return {
-            'statusCode': 200,
-            'body': icon,
-            'headers': {'Content-Type': 'image/vnd.microsoft.icon'},
-            'isBase64Encoded': True
-        }
-
-    return handler(path, method, headers, query_string, body)
+if __name__ == '__main__':
+    app.run()
