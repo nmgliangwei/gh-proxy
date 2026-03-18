@@ -190,3 +190,5 @@ def proxy(u, allow_redirects=False):
         headers['content-type'] = 'text/html; charset=UTF-8'
         return Response('server error ' + str(e), status=500, headers=headers)
 
+if __name__ == '__main__':
+    app.run()
