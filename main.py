@@ -99,6 +99,11 @@ def health():
     """健康检查端点"""
     return Response('OK', status=200, content_type='text/plain')
 
+@app.route('/favicon.ico')
+def favicon():
+    """返回 favicon"""
+    return Response(get_icon_r(), content_type='image/x-icon')
+
 @app.route('/')
 def index():
     if 'q' in request.args:
@@ -112,8 +117,15 @@ def check_url(u):
             return m
     return False
 
+# 排除某些特殊路径
+EXCLUDED_PATHS = ['api', '_next', 'vercel', '__next']
+
 @app.route('/<path:u>', methods=['GET', 'POST'])
 def handler(u):
+    # 排除特殊路径，避免捕获系统请求
+    if u.split('/')[0] in EXCLUDED_PATHS:
+        return Response('Not Found', status=404, content_type='text/plain')
+    
     u = u if u.startswith('http') else 'https://' + u
     if u.rfind('://', 3, 9) == -1:
         u = u.replace('s:/', 's://', 1)
