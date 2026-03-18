@@ -1,14 +1,14 @@
 {
   "version": 2,
   "functions": {
-    "api/__init__.py": {
+    "api/index.py": {
       "maxDuration": 10
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/__init__.py"
+      "dest": "/api/index.py"
     }
   ]
 }
