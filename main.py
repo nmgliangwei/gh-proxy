@@ -1,16 +1,7 @@
 # -*- coding: utf-8 -*-
-# 在导入任何其他模块之前，确保 BaseHTTPRequestHandler 正确定义
-# 这是为了解决 Vercel 运行时的 issubclass 检查问题
-import http.server
-if not hasattr(http.server, 'BaseHTTPRequestHandler'):
-    raise RuntimeError("BaseHTTPRequestHandler not found")
-
 import re
 import os
 import sys
-
-# 确保 BaseHTTPRequestHandler 在模块级别可用
-BaseHTTPRequestHandler = http.server.BaseHTTPRequestHandler
 
 import requests
 from flask import Flask, Response, redirect, request
