@@ -15,17 +15,17 @@ from urllib.parse import quote
 app = Flask(__name__)
 
 # config
-# 分支文件使用jsDelivr镜像的开关，0为关闭，默认关闭
+# 分支文件使用 jsDelivr 镜像的开关，0 为关闭，默认关闭
 jsdelivr = 0
-size_limit = 1024 * 1024 * 1024 * 999  # 允许的文件大小，默认999GB，相当于无限制了 https://github.com/hunshcn/gh-proxy/issues/8
+size_limit = 1024 * 1024 * 1024 * 999  # 允许的文件大小，默认 999GB，相当于无限制了 https://github.com/hunshcn/gh-proxy/issues/8
 
 """
-  先生效白名单再匹配黑名单，pass_list匹配到的会直接302到jsdelivr而忽略设置
-  生效顺序 白->黑->pass，可以前往https://github.com/hunshcn/gh-proxy/issues/41 查看示例
+  先生效白名单再匹配黑名单，pass_list匹配到的会直接 302 到 jsdelivr 而忽略设置
+  生效顺序 白->黑->pass，可以前往 https://github.com/hunshcn/gh-proxy/issues/41 查看示例
   每个规则一行，可以封禁某个用户的所有仓库，也可以封禁某个用户的特定仓库，下方用黑名单示例，白名单同理
-  user1 # 封禁user1的所有仓库
-  user1/repo1 # 封禁user1的repo1
-  */repo1 # 封禁所有叫做repo1的仓库
+  user1 # 封禁 user1 的所有仓库
+  user1/repo1 # 封禁 user1 的 repo1
+  */repo1 # 封禁所有叫做 repo1 的仓库
 """
 white_list = '''
 '''
@@ -41,8 +41,28 @@ black_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in black_l
 pass_list = [tuple([x.replace(' ', '') for x in i.split('/')]) for i in pass_list.split('\n') if i]
 
 CHUNK_SIZE = 1024 * 10
-index_html = requests.get(ASSET_URL, timeout=10).text
-icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
+# 懒加载静态资源，避免模块导入时网络请求导致超时
+_index_html = None
+_icon_r = None
+
+def get_index_html():
+    global _index_html
+    if _index_html is None:
+        try:
+            _index_html = requests.get(ASSET_URL, timeout=10).text
+        except Exception:
+            _index_html = '<h1>GH Proxy</h1><p>Server Error</p>'
+    return _index_html
+
+def get_icon_r():
+    global _icon_r
+    if _icon_r is None:
+        try:
+            _icon_r = requests.get(ASSET_URL + '/favicon.ico', timeout=10).content
+        except Exception:
+            _icon_r = b''
+    return _icon_r
+
 exp1 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:releases|archive)/.*$')
 exp2 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:blob|raw)/.*$')
 exp3 = re.compile(r'^(?:https?://)?github\.com/(?P<author>.+?)/(?P<repo>.+?)/(?:info|git-).*$')
@@ -56,12 +76,12 @@ requests.sessions.default_headers = lambda: CaseInsensitiveDict()
 def index():
     if 'q' in request.args:
         return redirect('/' + request.args.get('q'))
-    return index_html
+    return get_index_html()
 
 
 @app.route('/favicon.ico')
 def icon():
-    return Response(icon_r, content_type='image/vnd.microsoft.icon')
+    return Response(get_icon_r(), content_type='image/vnd.microsoft.icon')
 
 
 def iter_content(self, chunk_size=1, decode_unicode=False):
@@ -118,7 +138,7 @@ def check_url(u):
 def handler(u):
     u = u if u.startswith('http') else 'https://' + u
     if u.rfind('://', 3, 9) == -1:
-        u = u.replace('s:/', 's://', 1)  # uwsgi会将//传递为/
+        u = u.replace('s:/', 's://', 1)  # uwsgi 会将//传递为/
     pass_by = False
     m = check_url(u)
     if m:
@@ -192,4 +212,6 @@ def proxy(u, allow_redirects=False):
 
 if __name__ == '__main__':
     app.run()
+
+# Vercel 需要 application 作为 WSGI 入口
 application = app
