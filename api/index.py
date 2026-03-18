@@ -6,7 +6,4 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from main import app
 
-# Vercel Serverless Function 入口
-def handler(request):
-    """Vercel Serverless Function handler"""
-    return app(request.environ, lambda *args: None)
+# Vercel Python runtime 会自动识别并使用 Flask app 实例
