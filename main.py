@@ -192,3 +192,4 @@ def proxy(u, allow_redirects=False):
 
 if __name__ == '__main__':
     app.run()
+application = app
