@@ -190,6 +190,13 @@ def app(environ, start_response):
             start_response('302 Found', [('Location', u)])
             return [b'']
 
+        # Git clone 协议（info/refs、git-upload-pack 等）无法在 Serverless 环境代理
+        # 直接重定向到原始 GitHub URL，避免内存溢出崩溃
+        if exp3.match(u):
+            url = u + ('?' + query_string if query_string else '')
+            start_response('302 Found', [('Location', url)])
+            return [b'']
+
         # 代理处理
         if exp2.match(u):
             u = u.replace('/blob/', '/raw/', 1)
